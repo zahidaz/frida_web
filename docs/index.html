@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Frida Browser Client</title>
+    <style>
+        body {
+            font-family: monospace;
+            margin: 20px;
+            background: #000;
+            color: #fff;
+        }
+        
+        input {
+            background: #333;
+            color: #fff;
+            border: 1px solid #666;
+            padding: 10px;
+            margin: 5px;
+            font-family: monospace;
+            width: 200px;
+        }
+        
+        button {
+            background: #333;
+            color: #fff;
+            border: 1px solid #666;
+            padding: 10px 20px;
+            margin: 5px;
+            cursor: pointer;
+        }
+        
+        button:hover {
+            background: #555;
+        }
+        
+        #output {
+            margin-top: 20px;
+            padding: 10px;
+            border: 1px solid #666;
+            background: #111;
+            white-space: pre-wrap;
+            min-height: 200px;
+            max-height: 400px;
+            overflow-y: auto;
+            overflow-x: auto;
+        }
+        
+        #scriptContainer {
+            margin-top: 20px;
+            border: 1px solid #666;
+            background: #111;
+            padding: 10px;
+        }
+        
+        textarea {
+            width: 100%;
+            min-height: 150px;
+            background: #222;
+            color: #fff;
+            border: 1px solid #666;
+            font-family: monospace;
+            padding: 10px;
+            resize: vertical;
+        }
+        
+        .script-controls {
+            margin-top: 10px;
+        }
+        
+        .process-selection {
+            margin-bottom: 10px;
+        }
+        
+        select {
+            background: #333;
+            color: #fff;
+            border: 1px solid #666;
+            padding: 10px;
+            font-family: monospace;
+            margin-right: 10px;
+            min-width: 200px;
+        }
+        
+        #processSelect {
+            width: 100%;
+            max-width: 500px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Frida Browser Client</h1>
+    
+    <input type="text" id="hostInput" placeholder="localhost:27042" value="localhost:27042">
+    <button onclick="showSystemInfo()">System Info</button>
+    <button onclick="listProcesses()">List Processes</button>
+    
+    <div id="output">Click a button to start...</div>
+    
+    <div id="scriptContainer">
+        <h3>Custom Script</h3>
+        <div class="process-selection">
+            <label>Target Process:</label>
+            <select id="processSelect">
+                <option value="">Select a process first (click List Processes)</option>
+            </select>
+            <button onclick="refreshProcessList()">Refresh Process List</button>
+        </div>
+        <div class="script-controls">
+            <select id="scriptSelect" onchange="loadSelectedScript()">
+                <option value="default">Default Script (Process Info)</option>
+                <option value="custom">Custom Script</option>
+            </select>
+            <button onclick="runScript()">Run Script</button>
+            <button onclick="clearScript()">Clear</button>
+        </div>
+        <textarea id="scriptInput" placeholder="Loading default script..."></textarea>
+    </div>
+
+    <script type="module">
+        import { Client } from './frida-web.js';
+        
+        let client = null;
+        let currentHost = null;
+        let defaultScript = '';
+        let cachedProcesses = [];
+        const output = document.getElementById('output');
+        
+        async function getClient() {
+            const host = document.getElementById('hostInput').value.trim();
+            if (!host) {
+                throw new Error('Please enter host:port');
+            }
+            
+            if (!client || currentHost !== host) {
+                output.textContent = 'Connecting to ' + host + '...';
+                client = new Client(host);
+                currentHost = host;
+            }
+            return client;
+        }
+        
+        window.showSystemInfo = async function() {
+            try {
+                const c = await getClient();
+                output.textContent = 'Getting system info...';
+                const info = await c.querySystemParameters();
+                output.textContent = JSON.stringify(info, null, 2);
+            } catch (error) {
+                console.error('System Info Error:', error);
+                output.textContent = `Error: ${error.message}\n\nStack Trace:\n${error.stack}`;
+            }
+        }
+        
+        function populateProcessSelect(processes) {
+            const processSelect = document.getElementById('processSelect');
+            processSelect.innerHTML = '<option value="">Select a process...</option>';
+            
+            processes.forEach(process => {
+                const option = document.createElement('option');
+                option.value = process.pid;
+                option.textContent = `${process.name} (PID: ${process.pid})`;
+                processSelect.appendChild(option);
+            });
+        }
+
+        window.listProcesses = async function() {
+            try {
+                const c = await getClient();
+                output.textContent = 'Getting processes...';
+                const processes = await c.enumerateProcesses();
+                cachedProcesses = processes;
+                populateProcessSelect(processes);
+                output.textContent = JSON.stringify(processes, null, 2);
+            } catch (error) {
+                console.error('List Processes Error:', error);
+                output.textContent = `Error: ${error.message}\n\nStack Trace:\n${error.stack}`;
+            }
+        }
+        
+        window.refreshProcessList = async function() {
+            try {
+                const c = await getClient();
+                output.textContent = 'Refreshing process list...';
+                const processes = await c.enumerateProcesses();
+                cachedProcesses = processes;
+                populateProcessSelect(processes);
+                output.textContent = `Process list refreshed. Found ${processes.length} processes.`;
+            } catch (error) {
+                console.error('Refresh Processes Error:', error);
+                output.textContent = `Error: ${error.message}\n\nStack Trace:\n${error.stack}`;
+            }
+        }
+        
+        async function loadDefaultScript() {
+            try {
+                const response = await fetch('frida-script.js');
+                defaultScript = await response.text();
+                const textarea = document.getElementById('scriptInput');
+                if (textarea.value.includes('// Default script:') || textarea.value === '') {
+                    textarea.value = defaultScript;
+                }
+            } catch (error) {
+                console.error('Failed to load default script:', error);
+                console.error('Stack trace:', error.stack);
+                defaultScript = '// Failed to load default script\nconsole.log("Hello from Frida!");';
+                document.getElementById('scriptInput').value = defaultScript;
+            }
+        }
+        
+        window.loadSelectedScript = function() {
+            const select = document.getElementById('scriptSelect');
+            const textarea = document.getElementById('scriptInput');
+            
+            if (select.value === 'default') {
+                textarea.value = defaultScript;
+            } else {
+                textarea.value = '';
+                textarea.placeholder = 'Enter your custom Frida script here...';
+            }
+        }
+        
+        window.runScript = async function() {
+            try {
+                const c = await getClient();
+                const script = document.getElementById('scriptInput').value.trim();
+                const selectedPid = document.getElementById('processSelect').value;
+                
+                if (!script) {
+                    output.textContent = 'Error: Please enter a script';
+                    return;
+                }
+                
+                if (!selectedPid) {
+                    output.textContent = 'Error: Please select a target process first';
+                    return;
+                }
+                
+                const targetPid = parseInt(selectedPid);
+                const targetProcess = cachedProcesses.find(p => p.pid === targetPid);
+                const processName = targetProcess ? targetProcess.name : `PID ${targetPid}`;
+                
+                output.textContent = `Attaching to process: ${processName} (PID: ${targetPid})...`;
+                
+                const session = await c.attach(targetPid, {});
+                const fridaScript = await session.createScript(script);
+                
+                let scriptOutput = '';
+                fridaScript.message.connect((message, data) => {
+                    console.log('Script message:', message, data);
+                    if (message.type === 'send') {
+                        scriptOutput += `SEND: ${JSON.stringify(message.payload)}\n`;
+                        output.textContent = `Script Output (${processName}):\n${scriptOutput}`;
+                    } else if (message.type === 'error') {
+                        console.error('Script Error Message:', message);
+                        scriptOutput += `ERROR: ${message.description}\n`;
+                        if (message.stack) {
+                            scriptOutput += `Stack: ${message.stack}\n`;
+                        }
+                        output.textContent = `Script Output (${processName}):\n${scriptOutput}`;
+                    } else if (message.type === 'log') {
+                        scriptOutput += `LOG: ${message.payload}\n`;
+                        output.textContent = `Script Output (${processName}):\n${scriptOutput}`;
+                    } else {
+                        console.log('Other message type:', message);
+                        scriptOutput += `${message.type}: ${JSON.stringify(message)}\n`;
+                        output.textContent = `Script Output (${processName}):\n${scriptOutput}`;
+                    }
+                });
+                
+                fridaScript.logHandler = (level, text) => {
+                    console.log(`Script Log [${level}]:`, text);
+                    scriptOutput += `[${level.toUpperCase()}] ${text}\n`;
+                    output.textContent = `Script Output (${processName}):\n${scriptOutput}`;
+                };
+                
+                await fridaScript.load();
+                
+                setTimeout(() => {
+                    if (!scriptOutput) {
+                        output.textContent = `Script executed successfully on ${processName} (no output)`;
+                    }
+                }, 1000);
+                
+            } catch (error) {
+                console.error('Run Script Error:', error);
+                output.textContent = `Script Error: ${error.message}\n\nStack Trace:\n${error.stack}`;
+            }
+        }
+        
+        window.clearScript = function() {
+            document.getElementById('scriptInput').value = '';
+            output.textContent = 'Script cleared';
+        }
+        
+        loadDefaultScript();
+    </script>
+</body>
+</html>

@@ -1,0 +1,69 @@
+{
+  "name": "frida-web",
+  "version": "1.0.2",
+  "description": "Browser-compatible Frida web client using WebSocket D-Bus communication",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "browser": "dist/frida-web.js",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./browser": {
+      "types": "./dist/frida-web.d.ts",
+      "default": "./dist/frida-web.js"
+    }
+  },
+  "files": [
+    "dist/",
+    "lib/",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "npm run build:esm && npm run build:browser && npm run build:types",
+    "build:esm": "tsc --project tsconfig.json",
+    "build:cjs": "tsc --project tsconfig.cjs.json",
+    "build:browser": "esbuild index.ts --bundle --format=esm --outfile=dist/frida-web.js --platform=browser --target=es2020 --minify",
+    "build:types": "tsc --project tsconfig.json --declaration --emitDeclarationOnly --outDir dist",
+    "dev": "esbuild index.ts --bundle --format=esm --outfile=dist/frida-web.js --platform=browser --target=es2020 --watch",
+    "prepublishOnly": "npm run build",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "frida",
+    "dbus",
+    "websocket",
+    "browser",
+    "dynamic-instrumentation",
+    "reverse-engineering",
+    "security",
+    "javascript",
+    "typescript"
+  ],
+  "author": "Xahid <xahidx@proton.me>",
+  "license": "MIT",
+  "homepage": "https://github.com/zahidaz/frida-web#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zahidaz/frida-web.git"
+  },
+  "bugs": {
+    "url": "https://github.com/zahidaz/frida-web/issues"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "dependencies": {
+    "d-bus-message-protocol": "^1.0.0",
+    "d-bus-type-system": "^1.0.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.9",
+    "typescript": "^5.0.0"
+  }
+}
