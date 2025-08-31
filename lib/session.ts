@@ -145,6 +145,11 @@ export class Session {
         this._deliverPendingMessages();
     }
 
+    _handleIncomingMessages(messages: AgentMessageRecord[], batchId: number): void {
+        console.log('Session._handleIncomingMessages called:', { messages, batchId });
+        this._sink.postMessages(messages, batchId);
+    }
+
     private _deliverPendingMessages(): void {
         if (this._pendingDeliveries > 0) {
             return;
@@ -170,22 +175,28 @@ export class Session {
     }
 
     private _dispatchMessages = (messages: AgentMessageRecord[], batchId: number): void => {
+        console.log('Session._dispatchMessages called:', { messages, batchId, scriptsCount: this._scripts.size });
         this._lastRxBatchId = batchId;
 
         for (const [kind, scriptId, text, hasData, data] of messages) {
+            console.log('Processing message:', { kind, scriptId, text, hasData, dataLength: data?.length });
             const script = this._scripts.get(scriptId[0]);
             if (script === undefined) {
+                console.log('Script not found for scriptId:', scriptId);
                 continue;
             }
 
             let message;
             try {
                 message = JSON.parse(text);
+                console.log('Parsed message:', message);
             } catch (error) {
+                console.error('Failed to parse message text:', text, error);
                 continue;
             }
 
             const binaryData = hasData ? new Uint8Array(data).buffer : null;
+            console.log('Dispatching to script:', { message, binaryData });
             script._dispatchMessage(message, binaryData);
         }
     }

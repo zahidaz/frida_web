@@ -119,7 +119,7 @@
     </div>
 
     <script type="module">
-        import { Client } from './frida-web.js';
+        import { Client } from 'https://unpkg.com/frida-web/dist/frida-web.js';
         
         let client = null;
         let currentHost = null;
@@ -146,7 +146,9 @@
                 const c = await getClient();
                 output.textContent = 'Getting system info...';
                 const info = await c.querySystemParameters();
-                output.textContent = JSON.stringify(info, null, 2);
+                output.textContent = JSON.stringify(info, (key, value) => {
+                    return typeof value === 'bigint' ? value.toString() : value;
+                }, 2);
             } catch (error) {
                 console.error('System Info Error:', error);
                 output.textContent = `Error: ${error.message}\n\nStack Trace:\n${error.stack}`;
@@ -244,7 +246,12 @@
                 output.textContent = `Attaching to process: ${processName} (PID: ${targetPid})...`;
                 
                 const session = await c.attach(targetPid, {});
+                console.log('Attach successful, session:', session);
+                output.textContent = `Creating script in process: ${processName}...`;
+                
                 const fridaScript = await session.createScript(script);
+                console.log('Script created successfully:', fridaScript);
+                output.textContent = `Setting up message handlers for: ${processName}...`;
                 
                 let scriptOutput = '';
                 fridaScript.message.connect((message, data) => {
@@ -275,11 +282,16 @@
                     output.textContent = `Script Output (${processName}):\n${scriptOutput}`;
                 };
                 
+                console.log('Loading script...');
+                output.textContent = `Loading script into: ${processName}...`;
                 await fridaScript.load();
+                console.log('Script loaded successfully');
+                output.textContent = `Script loaded into: ${processName}. Waiting for output...`;
                 
                 setTimeout(() => {
                     if (!scriptOutput) {
-                        output.textContent = `Script executed successfully on ${processName} (no output)`;
+                        console.log('No script output received after 1 second');
+                        output.textContent = `Script executed on ${processName} but produced no output. Check console for details.`;
                     }
                 }, 1000);
                 

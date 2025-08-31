@@ -1,6 +1,15 @@
-# Frida Web
+# Frida Web (Experimental)
 
 Browser-compatible Frida client using WebSocket D-Bus communication.
+
+## Why
+
+Frida traditionally requires D-Bus, which depends on operating system sockets that are not available in browser environments. While proxy-based workarounds exist, they introduce unnecessary complexity since Frida already expects D-Bus messages over WebSocket.  
+
+**Frida Web** removes that barrier by sending and receiving marshalled D-Bus messages directly over WebSocket, making it possible to control a running Frida instance straight from the browser.  
+
+Go to [https://zahidaz.github.io/frida_web/](https://zahidaz.github.io/frida_web/) and try it for yourself.
+
 
 ## Features
 

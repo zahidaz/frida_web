@@ -1,6 +1,6 @@
 {
   "name": "frida-web",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Browser-compatible Frida web client using WebSocket D-Bus communication",
   "main": "dist/index.js",
   "module": "dist/index.js",

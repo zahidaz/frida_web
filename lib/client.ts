@@ -15,6 +15,7 @@ import {
 
 import { parseMessages, serializeMessage, MessageType } from 'd-bus-message-protocol';
 import { parseTypes } from 'd-bus-type-system';
+import type { SignalMessage } from 'd-bus-message-protocol';
 
 
 class WebSocketWrapper {
@@ -86,10 +87,30 @@ class BrowserDBusClient implements MessageBus {
     private ws: WebSocketWrapper;
     private serialCounter = 1;
     private pendingCalls = new Map<number, { resolve: Function, reject: Function }>();
+    private signalHandlers = new Map<string, Function[]>();
 
     constructor(ws: WebSocketWrapper) {
         this.ws = ws;
         this.ws.on('message', this.handleMessage.bind(this));
+    }
+
+    addSignalListener(objectPath: string, interfaceName: string, memberName: string, handler: Function) {
+        const key = `${objectPath}:${interfaceName}:${memberName}`;
+        if (!this.signalHandlers.has(key)) {
+            this.signalHandlers.set(key, []);
+        }
+        this.signalHandlers.get(key)!.push(handler);
+    }
+
+    removeSignalListener(objectPath: string, interfaceName: string, memberName: string, handler: Function) {
+        const key = `${objectPath}:${interfaceName}:${memberName}`;
+        const handlers = this.signalHandlers.get(key);
+        if (handlers) {
+            const index = handlers.indexOf(handler);
+            if (index > -1) {
+                handlers.splice(index, 1);
+            }
+        }
     }
 
     private async handleMessage(messageData: ArrayBuffer) {
@@ -108,6 +129,27 @@ class BrowserDBusClient implements MessageBus {
                         this.pendingCalls.delete(msg.serial);
                         const errorMsg = msg as any;
                         pending.reject(new Error(`D-Bus Error: ${errorMsg.errorName} - ${errorMsg.args?.[0] || 'Unknown error'}`));
+                    }
+                } else if (msg.messageType === MessageType.Signal) {
+                    const signalMsg = msg as SignalMessage;
+                    console.log('D-Bus Signal received:', {
+                        objectPath: signalMsg.objectPath,
+                        interfaceName: signalMsg.interfaceName,
+                        memberName: signalMsg.memberName,
+                        args: signalMsg.args
+                    });
+                    const key = `${signalMsg.objectPath}:${signalMsg.interfaceName}:${signalMsg.memberName}`;
+                    const handlers = this.signalHandlers.get(key);
+                    console.log(`Looking for handlers with key: ${key}, found: ${handlers?.length || 0}`);
+                    if (handlers) {
+                        handlers.forEach(handler => {
+                            try {
+                                console.log('Calling signal handler with args:', signalMsg.args);
+                                handler(signalMsg.args);
+                            } catch (error) {
+                                console.error('Error in signal handler:', error);
+                            }
+                        });
                     }
                 }
             }
@@ -166,13 +208,24 @@ class BrowserDBusClient implements MessageBus {
                 message.args = args;
             }
         } else if (memberName === "LoadScript") {
-            const types = parseTypes("(u)");
+            const types = parseTypes("((u))");
             message.types = types;
-            message.args = args;
+            console.log('LoadScript called with args:', args);
+            if (args && args.length >= 1) {
+                const scriptIdTuple = args[0] as [number];
+                console.log('LoadScript scriptIdTuple:', scriptIdTuple);
+                const nestedStruct = [scriptIdTuple];
+                console.log('LoadScript final message.args:', nestedStruct);
+                console.log('LoadScript final message.args structure:', JSON.stringify(nestedStruct));
+                message.args = nestedStruct;
+            }
         } else if (memberName === "DestroyScript") {
-            const types = parseTypes("(u)");
+            const types = parseTypes("((u))");
             message.types = types;
-            message.args = args;
+            if (args && args.length >= 1) {
+                const scriptIdTuple = args[0] as [number];
+                message.args = [scriptIdTuple];
+            }
         } else if (memberName === "PostMessages") {
             const types = parseTypes("aau");
             message.types = types;
@@ -432,6 +485,33 @@ export class Client {
 
         const session = new Session(this, agentSession, pid, sessionId[0], persistTimeout ?? 0, connection);
         this._sessions.set(session.id, session);
+        
+        const dbusClient = connection.bus as any;
+        if (dbusClient.addSignalListener) {
+            const signalHandler = (args: any[]) => {
+                console.log('Agent session signal handler called with args:', args);
+                if (args && args.length >= 2) {
+                    const [messages, batchId] = args;
+                    console.log('Processing incoming messages:', { messages, batchId });
+                    session._handleIncomingMessages(messages, batchId);
+                } else {
+                    console.log('Signal args format unexpected:', args);
+                }
+            };
+            const signalPath = `/re/frida/AgentSession/${sessionId[0]}`;
+            console.log('Registering D-Bus signal listener:', {
+                objectPath: signalPath,
+                interfaceName: "re.frida.AgentSession17",
+                memberName: "Message"
+            });
+            dbusClient.addSignalListener(
+                signalPath,
+                "re.frida.AgentSession17",
+                "Message",
+                signalHandler
+            );
+        }
+        
         session._events.once("destroyed", () => {
             this._sessions.delete(session.id);
         });
