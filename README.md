@@ -1,4 +1,4 @@
-# Frida Web (Experimental)
+# Frida Web (Experimental POC)
 
 Browser-compatible Frida client using WebSocket D-Bus communication.
 
